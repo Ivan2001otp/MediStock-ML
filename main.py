@@ -47,3 +47,25 @@ async def health_check():
     return {"status":"ok","message":"Medistock AI Ml-service is running !"}
 
 
+@app.post("/predict")
+async def predict_vendor_score(request: PredictionRequest) :
+    if ML_MODEL is None or ML_FEATURES is None :
+        raise HTTPException(status_code=500, detail="ML model not loaded .")
+    
+    try :
+        input_data_dict : dict = {
+            "unit_price":request.unit_price,
+            "quality_rating":request.quality_rating,
+            "avg_delivery_days":request.avg_delivery_days
+        }
+
+        input_df = pd.DataFrame([input_data_dict], columns = ML_FEATURES)
+
+
+        #make prediction
+        predicted_score = ML_MODEL.predict(input_df)[0]
+        return {"predicted_outcome_score":round(float(predicted_score), 4)}
+
+    except Exception as e:
+        print(f"Prediction error : {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed : {e}")
