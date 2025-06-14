@@ -88,6 +88,10 @@ vendor_supply_attrs = [
 ]
 
 vendor_supply_attrs_df = pd.DataFrame(vendor_supply_attrs)
+max_unit_price_overall = vendor_supply_attrs_df['unit_price'].max()
+min_unit_price_overall = vendor_supply_attrs_df['unit_price'].min()
+max_delivery_days_overall = vendor_supply_attrs_df['avg_delivery_days'].max()
+min_delivery_days_overall = vendor_supply_attrs_df['avg_delivery_days'].min()
 
 
 # we can increase this if needed
@@ -111,18 +115,28 @@ for _ in range(num_orders) :
     actual_price:float = np.round(unit_price * np.random.uniform(0.95, 1.05), 2) # +/- 5%
     actual_delivery_days : int = max(1, round(avg_delivery_days + np.random.uniform(-1,1))) # +/- 1day
 
-    # this is simplified logic
-    normalized_price_score = 1-(actual_price / vendor_supply_attrs_df['unit_price'].max())
-    normalized_delivery_score = 1 - (actual_delivery_days / vendor_supply_attrs_df['avg_delivery_days'].max())
+    # this is simplified logic using min-max normalization strategy
+    if (max_unit_price_overall - min_unit_price_overall ==0) : 
+        normalized_price_score = 0.5 # default to middle if all prices are same.
+    else :
+        normalized_price_score = 1 - ((actual_price - min_unit_price_overall)/(max_unit_price_overall - min_unit_price_overall))
 
+
+    # lower delivery days -> high score (invert normalization)
+    if (max_delivery_days_overall - min_delivery_days_overall == 0) :
+        normalized_delivery_score=0.5
+    else:
+        normalized_delivery_score = 1 - ((actual_delivery_days - min_delivery_days_overall) / (max_delivery_days_overall - min_delivery_days_overall))
+
+    
     # Linear combination
     # weights : quality, price, delivery time
-    outcome_score:float = (quality_rating/5)*0.5 + \
-                            normalized_price_score * 0.3 + \
-                            normalized_delivery_score*0.2
+    outcome_score:float = (quality_rating/5.0)*0.50 + \
+                            normalized_price_score * 0.30 + \
+                            normalized_delivery_score*0.20
     
-    # Adding noise to outcome to make it less deterministic
-    outcome_score:float = np.clip(outcome_score + np.random.uniform((-0.1, 0.1), 0.1))
+    # Adding noise to outcome to make it less deterministic -np.clip(outcome_score + np.random.uniform(-0.15, 0.15),0.01, 0.1)
+    outcome_score:float = np.clip(outcome_score + np.random.uniform(-0.10, 0.10), 0.05, 1.0)
 
     historical_orders.append({
         'supply_id': supply_id,
