@@ -11,6 +11,8 @@ class Category(Enum):
     INFUSION=5
     INJECTION=6
 
+
+print("Preparing all mock data !")
 #mock supplies
 supplies_data : list[dict] = [
     {"id":1, "name":"Disposable Gloves", "category":Category.PPE},
@@ -93,11 +95,73 @@ num_orders : int = 500
 
 historical_orders = []
 
-
+print("generating...")
 for _ in range(num_orders) :
-    supply_vendor_choice = vendor_supply_attrs_df.sample(1).iloc[0]
+    # randomly pick a supply vendor combination
+    supply_vendor_choice:dict = vendor_supply_attrs_df.sample(1).iloc[0]
 
-    supply_id = supply_vendor_choice['supply_id']
-    vendor_id = supply_vendor_choice['vendor_id']
-    unit_price = supply_vendor_choice['unit_price']
+    supply_id:int = supply_vendor_choice['supply_id']
+    vendor_id:int = supply_vendor_choice['vendor_id']
+    unit_price:float = supply_vendor_choice['unit_price']
+    quality_rating:float = supply_vendor_choice['quality_rating']
+    avg_delivery_days:int = supply_vendor_choice['avg_delivery_days']
+
+
+    #introducing some realism and noise for actual price and delivery
+    actual_price:float = np.round(unit_price * np.random.uniform(0.95, 1.05), 2) # +/- 5%
+    actual_delivery_days : int = max(1, round(avg_delivery_days + np.random.uniform(-1,1))) # +/- 1day
+
+    # this is simplified logic
+    normalized_price_score = 1-(actual_price / vendor_supply_attrs_df['unit_price'].max())
+    normalized_delivery_score = 1 - (actual_delivery_days / vendor_supply_attrs_df['avg_delivery_days'].max())
+
+    # Linear combination
+    # weights : quality, price, delivery time
+    outcome_score:float = (quality_rating/5)*0.5 + \
+                            normalized_price_score * 0.3 + \
+                            normalized_delivery_score*0.2
     
+    # Adding noise to outcome to make it less deterministic
+    outcome_score:float = np.clip(outcome_score + np.random.uniform((-0.1, 0.1), 0.1))
+
+    historical_orders.append({
+        'supply_id': supply_id,
+        'vendor_id': vendor_id,
+        'unit_price': unit_price, # The base price from vendor_supply_prices
+        'quality_rating': quality_rating,
+        'avg_delivery_days': avg_delivery_days,
+        'actual_price_paid': actual_price,
+        'actual_delivery_days': actual_delivery_days,
+        'outcome_score': outcome_score # This is our ML target
+    })
+
+
+historical_df = pd.DataFrame(historical_orders)
+
+#mergine supplay and vendor names for better readablity
+historical_df = historical_df.merge(supplies_df[['id', 'name']], left_on='supply_id',right_on='id',suffixes=('', '_supply'))
+historical_df = historical_df.rename(columns={'name':'supply_name'})
+
+historical_df = historical_df.merge(vendors_df[['id', 'name']], left_on='vendor_id', right_on='id', suffixes=('', '_vendor'))
+historical_df = historical_df.rename(columns={'name': 'vendor_name'})
+historical_df = historical_df.drop(columns=['vendor_id']) 
+historical_df = historical_df.drop(columns=['supply_id'])
+
+
+#Reorder columns for clarity
+historical_df = historical_df[[
+     'supply_name',  'vendor_name',
+    'unit_price', 'quality_rating', 'avg_delivery_days',
+    'actual_price_paid', 'actual_delivery_days', 'outcome_score'
+]]
+
+
+# save to csv
+output_dir:str = "./data"
+os.makedirs(output_dir, exist_ok=True)
+output_path = os.path.join(output_dir, 'mock_historical_orders.csv')
+historical_df.to_csv(output_path, index=False)
+
+print(f"Generated {num_orders} mock historical orders and saved to {output_path}")
+print(historical_df.head())
+print(f"\nOutcome score distribution:\n{historical_df['outcome_score'].describe()}")
